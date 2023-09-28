@@ -1,0 +1,258 @@
+Resource:
+  myDynamoDBTable: 
+    Type: AWS::DynamoDB::metroddb
+    Properties: 
+      AttributeDefinitions: 
+        - 
+          AttributeName: "FirstName"
+          AttributeType: "S"
+        - 
+          AttributeName: "LastName"
+          AttributeType: "S"
+        - 
+          AttributeName: "Sales"
+          AttributeType: "N"
+        - 
+          AttributeName: "Region"
+          AttributeType: "S"
+      KeySchema: 
+        - 
+          AttributeName: "LastName"
+          KeyType: "HASH"
+        - 
+          AttributeName: "FirstName"
+          KeyType: "RANGE"
+      ProvisionedThroughput: 
+        ReadCapacityUnits: "5"
+        WriteCapacityUnits: "5"
+      TableName: "metroddb"
+
+  myVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      AvailabilityZone: ca-central-1
+      CidrBlock: 10.50.0.0/16
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      Tags:
+      - Key: stack
+        Value: production
+
+  myInternetGateway:
+    Type: AWS::EC2::InternetGateWay
+    Properties:
+      Tags:
+      - Key: stack
+        Value: production
+
+  myAttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: myVPC
+      InternetGatewayId:
+        Ref: myInternetGateWay
+
+  myAttachVpnGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: myVPC
+      VpnGatewayId:
+        Ref: myVPNGateway
+
+  myVPNGateWay: 
+    Type: AWS::EC2::VPNGateway
+    Properties: 
+      Type: ipsec.1
+      Tags: 
+      - Key: Use
+        Value: Production
+
+  myRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:  
+        Ref: myVPC
+      Tags:
+      - Key: stack
+        Value: production
+
+  myRoute:
+    Type: AWS::EC2::Route
+    DependsOn: myInternetGateWay
+    Properties:
+       RouteTableId:
+         Ref: myRouteTable
+       DestinationCidrBlock: 0.0.0.0/0
+       GatewayId:
+         Ref: myInternetGateway
+
+  mySubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: myVPC
+      CidrBlock: 10.50.1.0/24
+      AvailabilityZone: "ca-central-1a"
+      MapPublicIpOnLaunch: true
+      Tags:
+      - Key: stack
+        Value: production
+
+  mySubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: myVPC
+      CidrBlock: 10.50.2.0/24
+      AvailabilityZone: "ca-central-1a"
+      Tags:
+      - Key: stack
+        Value: production
+
+  mySubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: myVPC
+      CidrBlock: 10.50.3.0/24
+      AvailabilityZone: "ca-central-1b"
+      MapPublicIpOnLaunch: true
+      Tags:
+      - Key: stack
+        Value: production
+
+  mySubnet4:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: myVPC
+      CidrBlock: 10.50.4.0/24
+      AvailabilityZone: "ca-central-1b"
+      Tags:
+      - Key: stack
+        Value: production
+
+  mySubnetRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: mySubnet1
+      RouteTableId:
+        Ref: myRouteTable
+
+  mySubnetRouteTableAssociation3:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: mySubnet3
+      RouteTableId:
+        Ref: myRouteTable
+
+  NATGTEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      InstanceId: !Ref myInstance
+
+  NATGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+        AllocationId: !GetAtt NATGatewayEIP.AllocationId
+        SubnetId: !Ref mySubnet1
+        Tags:
+        - Key: stack
+          Value: production
+
+  NATGatewayEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+        Domain: vpc
+  RouteNATGateway:
+    DependsOn: NATGateway
+    Type: AWS::EC2::Route
+    Properties:
+        RouteTableId: !Ref PrivateRouteTable
+        DestinationCidrBlock: '0.0.0.0/0'
+        NatGatewayId: !Ref NATGateway
+
+  privateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:  
+        Ref: myVPC
+      Tags:
+      - Key: stack
+        Value: production
+  
+  privateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+       RouteTableId:
+         Ref: privateRouteTable
+       DestinationCidrBlock: 0.0.0.0/0
+       GatewayId:
+         Ref: NATGateway
+
+  subnetRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: subnet2
+      RouteTableId:
+        Ref: privateRouteTable
+
+  subnetRouteTableAssociation4:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: subnet4
+      RouteTableId:
+        Ref: privateRouteTable
+
+  mySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to client host
+      VpcId: !Ref myVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  myKeyPair:
+    Type: 'AWS::EC2::KeyPair'
+    Properties:
+      KeyName: dugNewKP
+
+  PublicEC2Instance: 
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: "ami-00c6177f250e07ec1"
+      KeyName: !Ref myKeyPair
+      InstanceType: t2.micro
+      SecurityGroupIds: 
+        - !Ref mySecurityGroup
+      SubnetId: 
+        Ref: subnet1
+  
+  PrivateEC2Instance: 
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: "ami-00c6177f250e07ec1"
+      KeyName: !Ref myKeyPair
+      InstanceType: t2.micro
+      SecurityGroupIds: 
+        - !Ref mySecurityGroup
+      SubnetId: 
+        Ref: subnet2
